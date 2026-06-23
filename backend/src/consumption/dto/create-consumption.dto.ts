@@ -14,6 +14,6 @@ export class CreateConsumptionDto {
   @Type(() => Number)
   @IsInt({ message: 'quantity must be an integer' })
   @IsPositive({ message: 'quantity must be greater than 0' })
-  @Max(1_000_000, { message: 'quantity exceeds the maximum allowed per request' })
+  @Max(1_000_000, { message: 'quantity must not exceed 1,000,000 per request' })
   quantity!: number;
 }
