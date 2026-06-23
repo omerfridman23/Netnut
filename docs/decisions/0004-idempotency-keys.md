@@ -11,12 +11,11 @@ can arrive more than once. Without protection, each duplicate is a second charge
 
 ## Decision
 
-Accept an optional **`Idempotency-Key` HTTP header** (Stripe-style) on
-`POST /api/consumption`. The key is stored on the consumption event under a
-**UNIQUE** constraint. The same mechanism now also protects
-`POST /api/customers/:id/credit`: the key is stored on a `CreditEvent` row
-(which doubles as a credit ledger entry) under its own **UNIQUE** constraint, so
-a retried top-up credits at most once. Behaviour (identical for both paths):
+Accept an optional **`Idempotency-Key` HTTP header** (Stripe-style) on both
+`POST /api/consumption` and `POST /api/customers/:id/credit`. The key is stored
+on the `WalletTransaction` row (the unified ledger entry for that operation)
+under a single **UNIQUE** constraint, so a retried consume or credit is applied
+at most once. Behaviour (identical for both paths):
 
 - **First request:** charges and stores the event with the key. Response
   `replayed: false`.
@@ -32,9 +31,9 @@ without a key never collide.
 ## Consequences
 
 - Both money-moving endpoints (consume and credit) are now retry-safe under the
-  same Stripe-style mechanism. The credit increment and its `CreditEvent` ledger
-  row commit in one transaction; a duplicate key rolls back the increment and
-  replays the original credit (same race handling as consume).
+  same Stripe-style mechanism. The balance change and its `WalletTransaction`
+  ledger row commit in one transaction; a duplicate key rolls back the change and
+  replays the original result (same race handling for both paths).
 - Retries are safe; the system is effectively exactly-once from the client's view.
 - True idempotency (returns the original result), not just rejection of duplicates.
 - Trade-off: a rare concurrent duplicate does a decrement-then-rollback before

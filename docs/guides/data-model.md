@@ -1,6 +1,8 @@
 # Data model
 
-Relationships: one Customer has many ConsumptionEvents; one Product appears in many ConsumptionEvents.
+A single **unified ledger** (`WalletTransaction`) records every wallet movement —
+credits (top-ups) and consumptions. One Customer has many transactions; one
+Product appears in the `CONSUME` transactions.
 
 ```text
 Customer                          Product
@@ -9,28 +11,31 @@ id            (PK)                id         (PK)
 name                              name
 walletBalance (cents)            unitPrice  (cents)
    |                                 |
-   | has many                        | appears in many
+   | has many                        | appears in many (CONSUME rows)
    |                                 |
-   +------------> ConsumptionEvent <-+
-                  ----------------
-                  id             (PK)
-                  customerId     (FK -> Customer.id)
-                  productId      (FK -> Product.id)
-                  quantity
-                  unitPrice      (snapshot, cents)
-                  totalCost      (cents)
-                  idempotencyKey (unique, nullable)
-                  createdAt
+   +-----------> WalletTransaction <-+
+                 -----------------
+                 id             (PK)
+                 customerId     (FK -> Customer.id)
+                 type           ('CREDIT' | 'CONSUME')
+                 amount         (signed cents: + credit, - consume)
+                 productId      (FK -> Product.id, NULL for credits)
+                 quantity       (NULL for credits)
+                 unitPrice      (snapshot, NULL for credits)
+                 idempotencyKey (unique, nullable)
+                 createdAt
 ```
 
 Schema notes (the *why* behind these lives in the linked ADRs below):
 
-- **Money as integer cents** in every money column (`walletBalance`, `unitPrice`, `totalCost`).
-- **Price snapshot**: each event stores its own `unitPrice` and `totalCost`, captured at the moment of consumption.
-- **Indexes** (all on `ConsumptionEvent`, the only high-volume table):
-  - `(customerId, createdAt, id)` - supports fast ordered queries on a customer's history.
+- **Unified ledger**: credits and consumes share one table, so the balance
+  reconciles with a single sum: `startBalance + SUM(amount) == walletBalance`.
+- **Money as integer cents** in every money column (`walletBalance`, `unitPrice`, `amount`).
+- **Price snapshot**: each `CONSUME` row stores its own `unitPrice`, captured at the moment of consumption.
+- **Indexes** (all on `WalletTransaction`, the only high-volume table):
+  - `(customerId, createdAt, id)` - per-customer history, newest first (each customer sees only their own rows).
   - `(productId)` - backs the foreign key (SQLite does not auto-index FKs).
-  - `idempotencyKey` (unique) - enforces at-most-once charging and speeds up replay lookups.
+  - `idempotencyKey` (unique) - enforces at-most-once credit/consume and speeds up replay lookups.
 - **Offset/limit pagination** for history (returns `total`); simple limits for the small product/customer lists.
 
 ## Related ADRs
