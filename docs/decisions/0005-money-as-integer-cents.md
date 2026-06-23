@@ -5,9 +5,9 @@
 
 ## Context
 
-Financial values must be exact. Floating-point types (`float`/`double`) cannot
-represent many decimal amounts precisely, which leads to rounding drift that is
-unacceptable for balances and billing.
+Financial values must be exact: every balance and charge has to be represented
+and computed without any precision loss. Storing money as fractional/decimal
+values risks small inaccuracies that are unacceptable for balances and billing.
 
 ## Decision
 
@@ -30,8 +30,8 @@ This is a deliberate choice and matches the industry standard for payment APIs
 We are explicitly aware that this means API consumers see a "scaled" integer
 rather than a human-readable dollar figure — that trade-off is accepted because:
 
-- Returning a JSON number like `124.90` reintroduces the exact floating-point
-  drift this decision exists to prevent (e.g. `124.90 + 0.10` is not `125.00`).
+- Returning a JSON number like `124.90` reintroduces the precision loss this
+  decision exists to prevent.
 - The conversion to a display string (`"$124.90"`) happens once, at the UI edge,
   via the frontend `formatCents` helper, so end users never see raw cents.
 

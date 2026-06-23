@@ -22,7 +22,7 @@ This requirement drove nearly every engineering decision in the project. The tab
 
 | Decision | What it prevents | Where |
 | --- | --- | --- |
-| **Money as integer cents everywhere** | Floating-point rounding errors in financial calculations | `schema.prisma` |
+| **Money as integer cents everywhere** | Precision loss in financial calculations | `schema.prisma` |
 | **Price snapshot (`unitPrice`, `totalCost`) on each event** | History silently changing when a product's price is updated later | `schema.prisma`, `consumption.service.ts` |
 | **Foreign keys ON, Cascade/Restrict rules** | Orphaned events; deleting a product that already has sales history | `schema.prisma` |
 | **Idempotency key + UNIQUE constraint** | Double-charging on client retries or dropped HTTP responses | `schema.prisma`, `consumption.repository.ts` |
