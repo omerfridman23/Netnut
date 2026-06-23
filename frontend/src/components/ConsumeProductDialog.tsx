@@ -32,7 +32,7 @@ export function ConsumeProductDialog({ open, onClose, fixedCustomerId }: Props) 
     productId,
     setProductId,
     quantity,
-    setQuantity,
+    handleQuantityChange,
     qtyValid,
     estimatedCost,
     canSubmit,
@@ -101,10 +101,9 @@ export function ConsumeProductDialog({ open, onClose, fixedCustomerId }: Props) 
 
           <TextField
             label="Quantity"
-            type="number"
             value={quantity}
-            onChange={(e) => setQuantity(e.target.value)}
-            inputProps={{ min: 1, step: 1 }}
+            onChange={handleQuantityChange}
+            inputProps={{ inputMode: 'numeric', pattern: '[0-9]*', maxLength: 7 }}
             error={quantity !== '' && !qtyValid}
             helperText={quantity !== '' && !qtyValid ? 'Enter a positive whole number' : ' '}
             fullWidth

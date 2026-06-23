@@ -26,13 +26,23 @@ export function useConsumeProductDialog({ fixedCustomerId, onClose }: Options) {
   const products = productsQuery.data ?? [];
 
   const selectedProduct = products.find((p) => p.id === productId);
-  const qtyNum = Number.parseInt(quantity, 10);
-  const qtyValid = Number.isInteger(qtyNum) && qtyNum > 0;
+  // Quantity is a count of units — it must be a whole positive number. We reject
+  // any non-digit while typing (see handleQuantityChange) and validate strictly
+  // here, so a value like "1.323" can never slip through as a truncated "1".
+  const qtyValid = /^\d+$/.test(quantity) && Number(quantity) > 0;
+  const qtyNum = qtyValid ? Number(quantity) : Number.NaN;
   const estimatedCost =
     selectedProduct && qtyValid ? selectedProduct.unitPrice * qtyNum : null;
 
   const effectiveCustomerId = fixedCustomerId ?? customerId;
   const canSubmit = Boolean(effectiveCustomerId) && Boolean(productId) && qtyValid;
+
+  // Digits only. Allow an empty string so the field can be cleared while editing.
+  const handleQuantityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const next = e.target.value;
+    if (next !== '' && !/^\d+$/.test(next)) return;
+    setQuantity(next);
+  };
 
   const handleClose = () => {
     consume.reset();
@@ -71,7 +81,7 @@ export function useConsumeProductDialog({ fixedCustomerId, onClose }: Options) {
     productId,
     setProductId,
     quantity,
-    setQuantity,
+    handleQuantityChange,
     qtyValid,
     estimatedCost,
     canSubmit,
