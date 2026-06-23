@@ -17,16 +17,16 @@ confidence).
 | 3 | **Concurrency suite** | No overspend, never negative, balance == history, no lost events, customer isolation | `test/e2e/concurrency.e2e.spec.ts` | `npm run test:concurrency` |
 | 4 | **Idempotency suite** | A retry storm with one key charges **exactly once** | `test/e2e/idempotency.e2e.spec.ts` | `npm run test:idempotency` |
 | 5 | **Chaos / fault injection** | Killing a replica mid-load leaves the wallet **perfectly consistent** | `scripts/chaos-check.mjs` | `npm run chaos` |
-| 6 | **Runtime metrics** | The concurrency machinery is **observable** — watch `dbRetries` under load | `GET /api/metrics` | see below |
+| 6 | **Runtime metrics** | The concurrency machinery is **observable** — inspect per-replica charged/replayed/declined counters and the retry safety net | `GET /api/metrics` | see below |
 
 Plus the live, multi-instance proofs (`npm run prove`) that run against the real
 two-replica Docker stack through the nginx load balancer.
 
-**32 automated tests pass** across unit, integration, e2e, and property suites.
+**38 automated tests pass** across unit, integration, e2e, and property suites.
 
 ```bash
 cd backend
-npm test                  # full suite (32 tests)
+npm test                  # full suite (38 tests)
 npm run test:unit         # fast, no I/O
 npm run test:integration  # service + repository + real SQLite, no HTTP
 npm run test:e2e          # full HTTP through the app
@@ -165,9 +165,12 @@ was still penny-perfect. (The killed replica is restarted automatically.)
 }
 ```
 
-Hammer the system (`ATTEMPTS=2000 npm run stress`) and watch `db.retries` climb as
-SQLite write contention forces full-jitter backoff — while accounting stays exact.
-Counters are per-process, so each replica reports its own (hence the `instance`).
+Run `npm run prove` and watch `consume.ok` and `consume.replayed` climb on both
+replicas while accounting stays exact. `db.retries` often stays at **0** — that is
+the healthy path: SQLite's `busy_timeout` absorbed the lock contention before the
+app-level retry safety net had to run. The retry path is still unit-tested and the
+counter only rises under extreme sustained contention. Counters are per-process,
+so each replica reports its own values (hence the `instance`).
 
 ---
 
@@ -188,6 +191,26 @@ Each script exits `0` on pass and prints a summary table. They run in the
 [CI pipeline](../../.github/workflows/ci.yml) too: the GitHub green badge means
 the full Docker stack booted and every live proof — concurrency, idempotency,
 metrics, and chaos — passed.
+
+## What CI runs
+
+The GitHub Actions workflow mirrors the manual proof path:
+
+1. **Backend tests:** `npm test` in `backend/` with `PROPERTY_NUM_RUNS=1000`.
+   This runs unit, integration, e2e, race-demo, idempotency, concurrency, and
+   property-based fuzz tests. The property test uses a thousand randomized
+   concurrent workloads in CI.
+2. **Frontend build:** `npm run build` in `frontend/`, so TypeScript and the
+   production bundle must compile.
+3. **Live Docker proof:** boots the full Compose stack, waits for
+   `/api/health`, then runs:
+   - `scripts/concurrency-check.mjs`
+   - `scripts/idempotency-check.mjs`
+   - a `/api/metrics` payload validation
+   - `scripts/chaos-check.mjs`
+
+This means CI verifies both the isolated test suite and the actual
+two-replica Docker deployment.
 
 ## Related ADRs
 
