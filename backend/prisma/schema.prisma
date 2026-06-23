@@ -1,0 +1,74 @@
+// Prisma schema for the usage-based billing system.
+//
+// Money is stored everywhere as integer CENTS (never floats) to avoid
+// floating-point rounding errors in financial calculations.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Product {
+  id        String   @id @default(cuid())
+  name      String
+  // Price per unit, in cents.
+  unitPrice Int
+  createdAt DateTime @default(now())
+
+  transactions WalletTransaction[]
+}
+
+model Customer {
+  id            String   @id @default(cuid())
+  name          String
+  // Wallet balance in cents. Guarded by an atomic conditional UPDATE so it can
+  // never go negative, even under concurrent consumption from multiple instances.
+  walletBalance Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  transactions WalletTransaction[]
+}
+
+// A single unified ledger for every wallet movement — both credits (top-ups) and
+// consumptions (product usage). One table is the single source of truth for a
+// customer's activity, so `walletBalance == startingBalance + SUM(amount)` always
+// holds and the history is one ordered timeline.
+model WalletTransaction {
+  id         String @id @default(cuid())
+  customerId String
+  // 'CREDIT' (top-up) or 'CONSUME' (product usage). SQLite has no native enum,
+  // so this is a string validated in application code (TransactionType).
+  type       String
+  // Signed effect on the wallet, in cents: POSITIVE for CREDIT, NEGATIVE for
+  // CONSUME. This makes reconciliation a single SUM over the ledger.
+  amount     Int
+
+  // Consume-only snapshot fields (NULL for credits). unitPrice is captured at the
+  // time of consumption so history stays accurate if a product's price changes.
+  productId String?
+  quantity  Int?
+  unitPrice Int?
+
+  // Optional client-supplied idempotency key (Stripe-style "Idempotency-Key").
+  // UNIQUE across the whole ledger so a retried credit OR consume is applied at
+  // most once. Nullable because keys are optional, and SQLite treats every NULL
+  // as distinct, so unkeyed requests never collide with one another.
+  idempotencyKey String? @unique
+
+  createdAt DateTime @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  product  Product? @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  // Powers per-customer history ordered newest-first with offset pagination:
+  // WHERE customerId = ? ORDER BY createdAt DESC, id DESC. The leading customerId
+  // also isolates each customer's rows; createdAt+id give a stable order.
+  @@index([customerId, createdAt, id])
+  // Backs the product foreign key (SQLite does not auto-index FKs).
+  @@index([productId])
+}

@@ -1,0 +1,130 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  backend-tests:
+    name: Backend tests (incl. concurrency + idempotency)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Run tests
+        run: npm test
+        # Property-based fuzz runs a thousand random concurrent workloads in CI
+        # (default is 300 locally for speed). Each run is a full randomized
+        # workload that fans out into many concurrent interleavings.
+        env:
+          PROPERTY_NUM_RUNS: "1000"
+
+  frontend-build:
+    name: Frontend typecheck + build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+  e2e-stack-proof:
+    name: Live proof on the full Docker stack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Start the stack
+        run: docker compose up --build -d
+
+      - name: Wait for the gateway to be healthy
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8081/api/health > /dev/null; then
+              echo "Gateway is up."
+              exit 0
+            fi
+            echo "Waiting for gateway... ($i)"
+            sleep 5
+          done
+          echo "Gateway did not become healthy in time." >&2
+          docker compose logs >&2
+          exit 1
+
+      - name: Prove concurrency safety (multi-instance)
+        run: node scripts/concurrency-check.mjs
+        env:
+          API_BASE: http://localhost:8081/api
+          ATTEMPTS: "150"
+
+      - name: Prove idempotency (retry storm charges once)
+        run: node scripts/idempotency-check.mjs
+        env:
+          API_BASE: http://localhost:8081/api
+          DUPLICATES: "50"
+
+      - name: Expose runtime metrics (concurrency machinery is observable)
+        run: |
+          echo "Metrics snapshot from a backend replica:"
+          metrics="$(curl -fsS http://localhost:8081/api/metrics)"
+          echo "$metrics"
+          echo
+          # A 200 alone proves nothing about the payload — assert the JSON actually
+          # carries the runtime-observability fields with the right types, so a
+          # stubbed/empty response cannot pass this gate.
+          echo "$metrics" | jq -e '
+            (.instance | type == "string")
+            and (.db.retries | type == "number")
+            and (.consume.ok | type == "number")
+          ' > /dev/null || {
+            echo "FAIL: /api/metrics payload missing expected fields or wrong types" >&2
+            echo "Expected: .instance (string), .db.retries (number), .consume.ok (number)" >&2
+            echo "Got: $metrics" >&2
+            exit 1
+          }
+
+      - name: Prove resilience (kill a replica mid-load)
+        run: node scripts/chaos-check.mjs
+        env:
+          API_BASE: http://localhost:8081/api
+          ATTEMPTS: "300"
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

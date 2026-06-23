@@ -1,0 +1,10 @@
+{
+  "name": "meter-demo",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Narrated demo video pipeline for the Meter usage-billing dashboard (Playwright screen capture + Windows SAPI narration, muxed with ffmpeg).",
+  "dependencies": {
+    "ffmpeg-static": "^5.2.0"
+  }
+}
