@@ -47,7 +47,12 @@ export async function createTestApp(dbFile: string): Promise<INestApplication> {
     }),
   );
   app.useGlobalFilters(new AllExceptionsFilter());
-  await app.init();
+
+  // Listen on a real ephemeral port instead of app.init(). This makes the HTTP
+  // server stay up for the whole suite, so supertest reuses one stable address.
+  // (With a non-listening server, supertest listens AND closes it per request,
+  // which under concurrency closes the server mid-flight -> ECONNRESET on CI.)
+  await app.listen(0, '127.0.0.1');
   return app;
 }
 
