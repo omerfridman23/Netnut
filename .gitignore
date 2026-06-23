@@ -1,0 +1,40 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+build/
+
+# environment
+.env
+.env.local
+
+# sqlite databases
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# logs
+*.log
+npm-debug.log*
+
+# os / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# test/coverage
+coverage/
+.vitest/
+
+# cursor / local tooling scratch (not part of the submission)
+.cursor/
+.shots/
+
+# demo scratch (keep only the final rendered video)
+demo/node_modules/
+demo/tmp/
+demo/audio/
+demo/rec/

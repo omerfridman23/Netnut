@@ -1,0 +1,18 @@
+{
+  "name": "usage-based-billing",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Usage-based billing platform — run the whole stack and prove its guarantees with one command.",
+  "license": "MIT",
+  "scripts": {
+    "up": "docker compose up --build",
+    "down": "docker compose down -v",
+    "stress": "node scripts/concurrency-check.mjs",
+    "stress:idempotency": "node scripts/idempotency-check.mjs",
+    "chaos": "node scripts/chaos-check.mjs",
+    "prove": "node scripts/concurrency-check.mjs && node scripts/idempotency-check.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
