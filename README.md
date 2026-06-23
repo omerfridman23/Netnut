@@ -49,16 +49,20 @@ and real output in the **[Testing & proofs guide](docs/guides/testing.md)**.
 | **Concurrency suite** | No overspend, never negative, `balance == history`, no lost events | `npm --prefix backend run test:concurrency` |
 | **Idempotency suite** | A retry storm charges **exactly once** | `npm --prefix backend run test:idempotency` |
 | **Chaos / fault injection** | Killing a replica mid-load leaves the wallet **penny-perfect** | `npm run chaos` |
-| **Runtime metrics** | The machinery is observable — watch `dbRetries` under load | `GET /api/metrics` |
+| **Runtime metrics** | The machinery is observable — inspect per-replica charges, replays, safe declines, and retry counters | `GET /api/metrics` |
 
 ```bash
-# 32 automated tests (unit + integration + e2e + property):
+# 38 automated tests (unit + integration + e2e + property):
 cd backend && npm test
 
 # live proofs against the running two-replica stack:
 npm run prove     # concurrency + idempotency through the nginx load balancer
 npm run chaos     # kill a backend replica mid-load; balance stays exact
 ```
+
+CI runs the same gates: `backend/npm test` with `PROPERTY_NUM_RUNS=1000`,
+`frontend/npm run build`, then a full Docker-stack proof (concurrency,
+idempotency, metrics payload validation, and chaos fault-injection).
 
 > Even with a backend replica **killed mid-flight during 300 concurrent
 > payments**, the wallet stays consistent to the cent — see the chaos output in
@@ -74,16 +78,26 @@ server — driving the real UI exactly as a user would:
   / sub-cent inputs blocked, accurate per-error messages, no stale success/error
   alerts), happy-path balance + history updates, and the `Min(1)` quantity guard.
 - **Navigation & state:** case-insensitive search, empty-result state, history
-  pagination, the not-found-customer page, and light/dark/system theme toggle.
+  pagination, the not-found-customer page (verified to make a single request per
+  query — no retry/poll storm on `4xx`), and the light/dark theme toggle.
 - **Live proof:** the `/system` panel's per-replica counters were cross-checked
   against the raw `GET /api/metrics` response and matched exactly.
 
 ### Narrated demo video
 
 A complete walkthrough of the platform — also captured via the **Playwright MCP**
-server — is recorded with **voice narration** describing each feature on screen:
+server — is recorded with **voice narration** describing each feature on screen,
+covering the customer dashboard, customer detail + consumption history, add-funds
+validation and success, recording usage, the safe insufficient-funds decline, the
+light/dark theme, and the **Live Proof metrics panel** (two replicas, charges,
+replays, declines, and DB lock-retry counters):
 
 - **[`demo/meter-demo.mp4`](demo/meter-demo.mp4)**
+
+The video is fully reproducible: `demo/walk.js` drives the Playwright screen
+capture, `demo/narration.json` holds the per-scene script, and
+`demo/build.mjs` synthesizes the voiceover and muxes it onto the recording
+(`npm --prefix demo install && node demo/build.mjs`).
 
 ---
 
@@ -130,8 +144,8 @@ The [ADR index](docs/decisions/README.md) lists the full set and states the syst
 - **SQLite for the assignment**, with the PostgreSQL/MySQL production path documented in [ADR-0003](docs/decisions/0003-sqlite-wal-multi-instance.md).
 - **Atomic conditional UPDATE over locking** for the wallet - simpler, portable to any SQL database, and avoids lock-ordering pitfalls.
 - **The API returns money as integer cents** (e.g. `12490` = $124.90), not decimal dollars. This is intentional and matches payment APIs like Stripe; returning JSON decimals would reintroduce floating-point drift. The UI formats cents to dollars at the edge. See [ADR-0005](docs/decisions/0005-money-as-integer-cents.md) for the rationale and the alternative considered.
-- **Credit events are not recorded as history.** Credits update the wallet balance atomically but do not write a history row. The task only requires consumption history, so this is intentional scope. With more time: add a `CreditEvent` table and unify it with `ConsumptionEvent` into a full double-entry ledger, enabling `SUM(all events) == walletBalance` reconciliation.
-- **Idempotency keys are on consume only.** Credit does not have them yet; the same pattern applies. Keys also have no TTL/expiry - with more time they would get a periodic cleanup job.
+- **Idempotency keys have no TTL/expiry.** Both consume *and* credit accept a Stripe-style `Idempotency-Key` (stored under a UNIQUE constraint, so a retried request is charged/credited at most once). The stored keys are never garbage-collected, though - a production system would add a periodic cleanup job for old keys.
+- **Full credit + debit ledger.** Every consumption writes a `ConsumptionEvent` and every credit writes a `CreditEvent`, both in the same transaction as the balance change. This makes the materialized `walletBalance` reconcilable against the ledger (`startBalance + SUM(credits) - SUM(consumes) == walletBalance`), which a dedicated test asserts.
 - **Polling + invalidation over WebSockets.** React Query invalidates affected queries after each mutation (instant feedback on your own actions) and polls every 10s so changes from other users/instances appear without a manual refresh. For instant cross-client push, SSE or WebSockets would be the next step.
 - **Every significant choice is documented** as an ADR - see [Design decisions (ADRs)](#design-decisions-adrs) above and the full records in [`docs/decisions/`](docs/decisions/README.md).
 

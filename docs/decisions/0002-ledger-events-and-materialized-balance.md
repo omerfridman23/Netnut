@@ -15,9 +15,10 @@ trust (and audit) the wallet balance. Two models were considered:
 
 ## Decision
 
-Use option 2. Each `ConsumptionEvent` is an append-only record (never mutated),
-and `Customer.walletBalance` is a materialized column updated in the same
-transaction as the event insert (see ADR-0001).
+Use option 2. Each `ConsumptionEvent` (debit) and `CreditEvent` (credit) is an
+append-only record (never mutated), and `Customer.walletBalance` is a
+materialized column updated in the same transaction as the matching event insert
+(see ADR-0001).
 
 ## Consequences
 
@@ -25,10 +26,9 @@ transaction as the event insert (see ADR-0001).
   history that can grow to hundreds of thousands of rows per customer.
 - History is always available for the UI, with keyset pagination on
   `(customerId, createdAt, id)`.
-- Consumption history is always available for the UI with keyset pagination.
-- Trade-off: only consumption events are recorded. Credits update the balance
-  atomically but do not write a history row. Full reconciliation
-  (`SUM(debits + credits) == walletBalance`) would require a credit event table —
-  a known gap documented as future work.
+- Both debit (`ConsumptionEvent`) and credit (`CreditEvent`) ledgers exist, so the
+  materialized balance is fully reconcilable:
+  `startBalance + SUM(credits) - SUM(consumes) == walletBalance`. A dedicated test
+  asserts this against the seed data.
 - Trade-off: the balance must always be written in the same transaction as the
   event, or the two could diverge. We accept this coupling for the read speed.
