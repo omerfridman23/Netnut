@@ -19,7 +19,7 @@ model Product {
   unitPrice Int
   createdAt DateTime @default(now())
 
-  events ConsumptionEvent[]
+  transactions WalletTransaction[]
 }
 
 model Customer {
@@ -31,52 +31,44 @@ model Customer {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  events  ConsumptionEvent[]
-  credits CreditEvent[]
+  transactions WalletTransaction[]
 }
 
-model ConsumptionEvent {
-  id         String   @id @default(cuid())
+// A single unified ledger for every wallet movement — both credits (top-ups) and
+// consumptions (product usage). One table is the single source of truth for a
+// customer's activity, so `walletBalance == startingBalance + SUM(amount)` always
+// holds and the history is one ordered timeline.
+model WalletTransaction {
+  id         String @id @default(cuid())
   customerId String
-  productId  String
-  quantity   Int
-  // Snapshot of the product's unit price AT THE TIME of consumption, so historical
-  // records stay accurate even if the product's price changes later.
-  unitPrice  Int
-  // quantity * unitPrice, in cents. Stored to avoid recomputation and to lock in history.
-  totalCost  Int
-  // Optional client-supplied idempotency key (Stripe-style "Idempotency-Key" header).
-  // UNIQUE so a retried request can never create a second charge: the duplicate insert
-  // is rejected by the database and the original event is replayed instead.
-  // Nullable because keys are optional, and SQLite treats every NULL as distinct, so
-  // unkeyed requests never collide with each other.
-  idempotencyKey String? @unique
-  createdAt  DateTime @default(now())
-
-  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  product  Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
-
-  // Composite index powering keyset pagination of a customer's history, newest first.
-  @@index([customerId, createdAt, id])
-  @@index([productId])
-}
-
-model CreditEvent {
-  id         String   @id @default(cuid())
-  customerId String
-  // Credited amount, in cents. Doubles as a credit ledger row alongside the
-  // wallet's materialized balance (mirrors ConsumptionEvent for the debit side).
+  // 'CREDIT' (top-up) or 'CONSUME' (product usage). SQLite has no native enum,
+  // so this is a string validated in application code (TransactionType).
+  type       String
+  // Signed effect on the wallet, in cents: POSITIVE for CREDIT, NEGATIVE for
+  // CONSUME. This makes reconciliation a single SUM over the ledger.
   amount     Int
+
+  // Consume-only snapshot fields (NULL for credits). unitPrice is captured at the
+  // time of consumption so history stays accurate if a product's price changes.
+  productId String?
+  quantity  Int?
+  unitPrice Int?
+
   // Optional client-supplied idempotency key (Stripe-style "Idempotency-Key").
-  // UNIQUE so a retried credit can never top up twice: the duplicate insert is
-  // rejected by the database and the original credit is replayed instead.
-  // Nullable because keys are optional, and SQLite treats every NULL as distinct,
-  // so unkeyed credits never collide with one another.
+  // UNIQUE across the whole ledger so a retried credit OR consume is applied at
+  // most once. Nullable because keys are optional, and SQLite treats every NULL
+  // as distinct, so unkeyed requests never collide with one another.
   idempotencyKey String? @unique
-  createdAt  DateTime @default(now())
+
+  createdAt DateTime @default(now())
 
   customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  product  Product? @relation(fields: [productId], references: [id], onDelete: Restrict)
 
-  // Composite index powering keyset pagination of a customer's credits, newest first.
+  // Powers per-customer history ordered newest-first with offset pagination:
+  // WHERE customerId = ? ORDER BY createdAt DESC, id DESC. The leading customerId
+  // also isolates each customer's rows; createdAt+id give a stable order.
   @@index([customerId, createdAt, id])
+  // Backs the product foreign key (SQLite does not auto-index FKs).
+  @@index([productId])
 }

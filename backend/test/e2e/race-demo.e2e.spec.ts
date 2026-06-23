@@ -91,8 +91,8 @@ describe('Race demo: naive read-modify-write vs atomic guarded UPDATE', () => {
     const correctFinal = (
       await prisma.customer.findUniqueOrThrow({ where: { id: correctCustomer.id } })
     ).walletBalance;
-    const correctEvents = await prisma.consumptionEvent.count({
-      where: { customerId: correctCustomer.id },
+    const correctEvents = await prisma.walletTransaction.count({
+      where: { customerId: correctCustomer.id, type: 'CONSUME' },
     });
 
     // --- Report --------------------------------------------------------------

@@ -21,10 +21,10 @@ export class CustomersController {
   /**
    * Credit (top up) a wallet. Returns 200 with the updated customer.
    *
-   * Optionally accepts an `Idempotency-Key` header (Stripe-style). If a request
-   * with the same key was already processed, the original result is replayed and
-   * the wallet is NOT topped up again — making retries safe under at-least-once
-   * delivery (dropped responses, client retries, queue redelivery).
+   * Optionally accepts an `Idempotency-Key` header (Stripe-style): a retried
+   * top-up with the same key is applied at most once and replays the original
+   * result. The balance is incremented atomically, so concurrent top-ups never
+   * lose each other.
    */
   @Post(':id/credit')
   @HttpCode(HttpStatus.OK)

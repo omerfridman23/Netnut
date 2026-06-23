@@ -1,8 +1,11 @@
-import { ConsumptionEvent } from '@prisma/client';
+import { WalletTransaction } from '@prisma/client';
 
 // ---------------------------------------------------------------------------
 // Internal types — used by the repository and service, never sent over the wire
 // ---------------------------------------------------------------------------
+
+/** Transaction kinds stored in the unified WalletTransaction ledger. */
+export type TransactionType = 'CREDIT' | 'CONSUME';
 
 /** Input to the consume repository method. */
 export interface ConsumeParams {
@@ -18,8 +21,10 @@ export interface ConsumeParams {
   idempotencyKey?: string | null;
 }
 
-/** A ConsumptionEvent row with its product name joined in. */
-export type EventWithProduct = ConsumptionEvent & { product: { name: string } };
+/** A WalletTransaction row with its (optional) product name joined in. */
+export type EventWithProduct = WalletTransaction & {
+  product: { name: string } | null;
+};
 
 /**
  * Discriminated union returned by the repository's consume method.

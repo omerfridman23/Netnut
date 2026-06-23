@@ -62,8 +62,8 @@ describe('Idempotency (e2e): a repeated request charges at most once', () => {
     const finalCustomer = await prisma.customer.findUniqueOrThrow({
       where: { id: customer.id },
     });
-    const eventCount = await prisma.consumptionEvent.count({
-      where: { customerId: customer.id },
+    const eventCount = await prisma.walletTransaction.count({
+      where: { customerId: customer.id, type: 'CONSUME' },
     });
 
     // Charged exactly once: balance moved by a single unit price, one event.
@@ -95,8 +95,8 @@ describe('Idempotency (e2e): a repeated request charges at most once', () => {
     const finalCustomer = await prisma.customer.findUniqueOrThrow({
       where: { id: customer.id },
     });
-    const eventCount = await prisma.consumptionEvent.count({
-      where: { customerId: customer.id },
+    const eventCount = await prisma.walletTransaction.count({
+      where: { customerId: customer.id, type: 'CONSUME' },
     });
 
     // Despite 25 concurrent duplicates, the wallet moved once and one event exists.

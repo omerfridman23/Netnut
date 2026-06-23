@@ -7,15 +7,7 @@ import {
   DuplicateIdempotencyError,
   isUniqueKeyViolation,
 } from '../consumption/consumption.repository.helpers';
-
-/**
- * Outcome of a credit attempt. Mirrors the consume path's discriminated union so
- * the service can map each case to the right HTTP response / metric.
- */
-export type CreditResult =
-  | { status: 'ok'; customer: Customer }
-  | { status: 'replayed'; customer: Customer }
-  | { status: 'customer_not_found' };
+import { CreditResult } from './customers.types';
 
 @Injectable()
 export class CustomersRepository {
@@ -41,37 +33,20 @@ export class CustomersRepository {
   }
 
   /**
-   * Atomic, retry-safe, idempotent credit.
+   * Atomic, retry-safe, idempotent credit (wallet top-up).
    *
-   * Concurrency & consistency:
-   *   The balance is changed with `{ increment }`, which compiles to
-   *   `SET walletBalance = walletBalance + ?` — a single atomic statement, so
-   *   concurrent top-ups can never lose each other (no read-modify-write race).
-   *   The increment AND the CreditEvent ledger insert run inside ONE transaction,
-   *   so the balance and its ledger record always commit together.
-   *
-   * Retry:
-   *   The whole transaction is wrapped in `withRetry`, exactly like consume, so a
-   *   transient SQLITE_BUSY under heavy concurrency is retried with backoff rather
-   *   than surfaced. Safe because the increment is atomic (no partial state).
-   *
-   * Idempotency (Stripe-style, mirrors consume):
-   *   If an idempotencyKey is supplied and we've seen it before, the original
-   *   result is returned immediately — the wallet is NOT topped up again. If two
-   *   concurrent requests race with the same key, the loser's CreditEvent insert
-   *   hits the UNIQUE constraint, rolling back its increment; it then replays the
-   *   winner's credit.
-   *
-   * Returns { status: 'customer_not_found' } when the customer does not exist —
-   * the caller decides the error. `updateMany` never throws on "not found"; it
-   * returns { count: 0 } instead, so no Prisma error codes leak out here.
+   * The balance is incremented with `{ increment }` (a single atomic SQL
+   * statement, so concurrent top-ups never lose each other) AND a CREDIT row is
+   * written to the unified WalletTransaction ledger (positive `amount`) in the
+   * SAME transaction. Idempotency mirrors consume: a repeat key replays the
+   * original result without topping up again; a concurrent duplicate hits the
+   * UNIQUE key, rolls back its increment, and replays the winner.
    */
   async creditWallet(
     id: string,
     amountCents: number,
     idempotencyKey?: string | null,
   ): Promise<CreditResult> {
-    // Fast path: replay without touching the wallet at all.
     if (idempotencyKey) {
       const replay = await this.replayIfProcessed(idempotencyKey);
       if (replay) return replay;
@@ -89,8 +64,8 @@ export class CustomersRepository {
             if (count === 0) return { status: 'customer_not_found' };
 
             try {
-              await tx.creditEvent.create({
-                data: { customerId: id, amount: amountCents, idempotencyKey },
+              await tx.walletTransaction.create({
+                data: { customerId: id, type: 'CREDIT', amount: amountCents, idempotencyKey },
               });
             } catch (error) {
               if (idempotencyKey && isUniqueKeyViolation(error)) {
@@ -102,8 +77,6 @@ export class CustomersRepository {
             const customer = await tx.customer.findUniqueOrThrow({ where: { id } });
             return { status: 'ok', customer };
           },
-          // With connection_limit=1 all transactions serialize on one connection.
-          // Generous timeouts let queued writers wait instead of failing.
           { maxWait: env.txMaxWaitMs, timeout: env.txTimeoutMs },
         ),
       );
@@ -119,10 +92,11 @@ export class CustomersRepository {
   private async replayIfProcessed(
     idempotencyKey: string,
   ): Promise<CreditResult | null> {
-    const existing = await this.prisma.creditEvent.findUnique({
+    const existing = await this.prisma.walletTransaction.findUnique({
       where: { idempotencyKey },
     });
-    if (!existing) return null;
+    // Only replay a CREDIT here; a key reused for a different op type won't match.
+    if (!existing || existing.type !== 'CREDIT') return null;
 
     const customer = await this.prisma.customer.findUnique({
       where: { id: existing.customerId },

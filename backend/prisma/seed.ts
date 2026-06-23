@@ -134,9 +134,8 @@ async function main() {
   try {
     console.log('Seeding database...');
 
-    // Clean slate (respect FK order: events first).
-    await prisma.creditEvent.deleteMany();
-    await prisma.consumptionEvent.deleteMany();
+    // Clean slate (respect FK order: ledger rows first).
+    await prisma.walletTransaction.deleteMany();
     await prisma.customer.deleteMany();
     await prisma.product.deleteMany();
 
@@ -153,20 +152,23 @@ async function main() {
       });
 
       if (c.events.length > 0) {
-        const events: Prisma.ConsumptionEventCreateManyInput[] = c.events.map(
+        // Each seeded consumption is a CONSUME row in the unified ledger, with a
+        // NEGATIVE amount (a debit) so balances reconcile via SUM(amount).
+        const events: Prisma.WalletTransactionCreateManyInput[] = c.events.map(
           (e) => {
             const prod = products[e.productIdx];
             return {
               customerId: customer.id,
+              type: 'CONSUME',
+              amount: -(prod.unitPrice * e.quantity),
               productId: prod.id,
               quantity: e.quantity,
               unitPrice: prod.unitPrice,
-              totalCost: prod.unitPrice * e.quantity,
               createdAt: e.createdAt,
             };
           },
         );
-        await prisma.consumptionEvent.createMany({ data: events });
+        await prisma.walletTransaction.createMany({ data: events });
       }
     }
 

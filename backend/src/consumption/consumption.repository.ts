@@ -9,38 +9,26 @@ import {
   isUniqueKeyViolation,
 } from './consumption.repository.helpers';
 
-
 @Injectable()
 export class ConsumptionRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Records a consumption event AND atomically deducts its cost from the
-   * customer's wallet — safely under heavy concurrent load.
+   * Records a CONSUME row in the unified WalletTransaction ledger AND atomically
+   * deducts its cost from the customer's wallet — safely under heavy concurrency.
    *
-   * How the race-condition is prevented:
-   *   Instead of reading the balance and then subtracting, we let the database
-   *   do both in one unbreakable step:
-   *
-   *     UPDATE Customer
-   *     SET walletBalance = walletBalance - cost
-   *     WHERE id = ? AND walletBalance >= cost
-   *
-   *   SQLite serializes writers, so two concurrent requests can never both pass
-   *   the balance check on a stale value. The number of rows affected tells us
-   *   what happened:
-   *     1 row → success, decrement applied
-   *     0 rows → customer not found, or not enough funds
-   *
-   *   The event insert happens in the SAME transaction as the deduction, so the
-   *   balance and history are always consistent (all-or-nothing).
+   * Race-condition prevention:
+   *   A single conditional UPDATE subtracts the cost only if the balance covers
+   *   it (`WHERE id = ? AND walletBalance >= cost`). SQLite serializes writers,
+   *   so two concurrent requests can never both pass on a stale balance. Rows
+   *   affected: 1 = success, 0 = customer missing or insufficient funds.
+   *   The ledger row is inserted in the SAME transaction, so balance and history
+   *   are always consistent. The consume row stores a NEGATIVE `amount`.
    *
    * Idempotency:
-   *   If an idempotencyKey is supplied and we've seen it before, the original
-   *   result is returned immediately — the wallet is NOT touched again.
-   *   If two concurrent requests race with the same key, the loser's deduction
-   *   is rolled back via DuplicateIdempotencyError, then the winner's event
-   *   is replayed.
+   *   A repeated request with the same key replays the original result without
+   *   charging again; a concurrent duplicate hits the UNIQUE key, rolls back its
+   *   decrement, and replays the winner.
    */
   async consume(params: ConsumeParams): Promise<ConsumeResult> {
     const { customerId, productId, quantity, unitPrice, totalCost, idempotencyKey } = params;
@@ -67,15 +55,22 @@ export class ConsumptionRepository {
                 where: { id: customerId },
                 select: { walletBalance: true },
               });
-              
               if (!customer) return { status: 'customer_not_found' };
               return { status: 'insufficient_funds', available: customer.walletBalance };
             }
 
             let event: EventWithProduct;
             try {
-              event = await tx.consumptionEvent.create({
-                data: { customerId, productId, quantity, unitPrice, totalCost, idempotencyKey },
+              event = await tx.walletTransaction.create({
+                data: {
+                  customerId,
+                  type: 'CONSUME',
+                  amount: -totalCost, // negative: a debit
+                  productId,
+                  quantity,
+                  unitPrice,
+                  idempotencyKey,
+                },
                 include: { product: { select: { name: true } } },
               });
             } catch (error) {
@@ -93,7 +88,6 @@ export class ConsumptionRepository {
             return { status: 'ok', event, walletBalance: customer.walletBalance };
           },
           // With connection_limit=1 all transactions serialize on one connection.
-          // Generous timeouts let queued writers wait instead of failing.
           { maxWait: env.txMaxWaitMs, timeout: env.txTimeoutMs },
         ),
       );
@@ -106,31 +100,37 @@ export class ConsumptionRepository {
     }
   }
 
+  /**
+   * A customer's CONSUME history, newest first. Filtered by customerId (each
+   * customer sees only their own rows) and type, served by the
+   * (customerId, createdAt, id) index.
+   */
   async findHistory(
     customerId: string,
     limit: number,
     offset: number,
   ): Promise<{ rows: EventWithProduct[]; total: number }> {
-    const where = { customerId };
+    const where = { customerId, type: 'CONSUME' };
     const [rows, total] = await this.prisma.$transaction([
-      this.prisma.consumptionEvent.findMany({
+      this.prisma.walletTransaction.findMany({
         where,
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         skip: offset,
         take: limit,
         include: { product: { select: { name: true } } },
       }),
-      this.prisma.consumptionEvent.count({ where }),
+      this.prisma.walletTransaction.count({ where }),
     ]);
     return { rows, total };
   }
 
   private async replayIfProcessed(idempotencyKey: string): Promise<ConsumeResult | null> {
-    const existing = await this.prisma.consumptionEvent.findUnique({
+    const existing = await this.prisma.walletTransaction.findUnique({
       where: { idempotencyKey },
       include: { product: { select: { name: true } } },
     });
-    if (!existing) return null;
+    // Only replay a CONSUME here; a key reused for a different op type won't match.
+    if (!existing || existing.type !== 'CONSUME') return null;
 
     const customer = await this.prisma.customer.findUniqueOrThrow({
       where: { id: existing.customerId },

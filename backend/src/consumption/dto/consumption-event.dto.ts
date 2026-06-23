@@ -1,6 +1,12 @@
 import { EventWithProduct } from '../consumption.types';
 
-/** A single consumption history record returned to clients. Money in cents. */
+/**
+ * A single consumption history record returned to clients. Money in cents.
+ *
+ * Built from a CONSUME row in the unified WalletTransaction ledger: such rows
+ * always carry productId/quantity/unitPrice, and their signed `amount` is
+ * negative, so the displayed `totalCost` is `-amount`.
+ */
 export class ConsumptionEventDto {
   id: string;
   customerId: string;
@@ -11,14 +17,14 @@ export class ConsumptionEventDto {
   totalCost: number;
   createdAt: string;
 
-  constructor(event: EventWithProduct) {
-    this.id = event.id;
-    this.customerId = event.customerId;
-    this.productId = event.productId;
-    this.productName = event.product?.name;
-    this.quantity = event.quantity;
-    this.unitPrice = event.unitPrice;
-    this.totalCost = event.totalCost;
-    this.createdAt = event.createdAt.toISOString();
+  constructor(tx: EventWithProduct) {
+    this.id = tx.id;
+    this.customerId = tx.customerId;
+    this.productId = tx.productId ?? '';
+    this.productName = tx.product?.name;
+    this.quantity = tx.quantity ?? 0;
+    this.unitPrice = tx.unitPrice ?? 0;
+    this.totalCost = -tx.amount;
+    this.createdAt = tx.createdAt.toISOString();
   }
 }

@@ -65,7 +65,9 @@ describe('ConsumptionService (integration)', () => {
 
     const persisted = await prisma.customer.findUniqueOrThrow({ where: { id: customer.id } });
     expect(persisted.walletBalance).toBe(100); // unchanged
-    const events = await prisma.consumptionEvent.count({ where: { customerId: customer.id } });
+    const events = await prisma.walletTransaction.count({
+      where: { customerId: customer.id, type: 'CONSUME' },
+    });
     expect(events).toBe(0); // no orphan event
   });
 
@@ -102,7 +104,9 @@ describe('ConsumptionService (integration)', () => {
 
     const persisted = await prisma.customer.findUniqueOrThrow({ where: { id: customer.id } });
     expect(persisted.walletBalance).toBe(750); // charged exactly once
-    const events = await prisma.consumptionEvent.count({ where: { customerId: customer.id } });
+    const events = await prisma.walletTransaction.count({
+      where: { customerId: customer.id, type: 'CONSUME' },
+    });
     expect(events).toBe(1);
   });
 });

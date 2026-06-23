@@ -31,14 +31,13 @@ describe('Concurrency & data consistency', () => {
     await app.close();
   });
 
-  /** Sum of totalCost across a customer's consumption events (the history). */
+  /** Sum of cost across a customer's CONSUME ledger rows (amount is negative). */
   async function historyTotal(customerId: string): Promise<number> {
-    const agg = await prisma.consumptionEvent.aggregate({
-      where: { customerId },
-      _sum: { totalCost: true },
-      _count: true,
+    const agg = await prisma.walletTransaction.aggregate({
+      where: { customerId, type: 'CONSUME' },
+      _sum: { amount: true },
     });
-    return agg._sum.totalCost ?? 0;
+    return Math.abs(agg._sum.amount ?? 0);
   }
 
   it('never overspends, never goes negative, and keeps balance == history', async () => {
@@ -70,8 +69,8 @@ describe('Concurrency & data consistency', () => {
     const finalCustomer = await prisma.customer.findUniqueOrThrow({
       where: { id: customer.id },
     });
-    const eventCount = await prisma.consumptionEvent.count({
-      where: { customerId: customer.id },
+    const eventCount = await prisma.walletTransaction.count({
+      where: { customerId: customer.id, type: 'CONSUME' },
     });
     const spentInHistory = await historyTotal(customer.id);
 

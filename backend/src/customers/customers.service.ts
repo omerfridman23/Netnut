@@ -25,11 +25,7 @@ export class CustomersService {
     amountCents: number,
     idempotencyKey?: string | null,
   ): Promise<CustomerDto> {
-    const result = await this.repository.creditWallet(
-      id,
-      amountCents,
-      idempotencyKey ?? null,
-    );
+    const result = await this.repository.creditWallet(id, amountCents, idempotencyKey ?? null);
 
     switch (result.status) {
       case 'customer_not_found':

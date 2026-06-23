@@ -110,9 +110,10 @@ describe('Property: wallet stays consistent for any random concurrent workload',
           const finalBalance = (
             await prisma.customer.findUniqueOrThrow({ where: { id: customer.id } })
           ).walletBalance;
-          const agg = await prisma.consumptionEvent.aggregate({
-            where: { customerId: customer.id },
-            _sum: { totalCost: true },
+          // CONSUME ledger rows for this customer (amount is negative).
+          const agg = await prisma.walletTransaction.aggregate({
+            where: { customerId: customer.id, type: 'CONSUME' },
+            _sum: { amount: true },
             _count: true,
           });
 
@@ -122,8 +123,9 @@ describe('Property: wallet stays consistent for any random concurrent workload',
           expect(finalBalance).toBeGreaterThanOrEqual(0);
           // 3. One event per successful consume — no lost or phantom events.
           expect(agg._count).toBe(consumeSuccesses);
-          // 4. Recorded history reconciles with the consumed amount.
-          expect(agg._sum.totalCost ?? 0).toBe(consumedTotal);
+          // 4. Recorded history reconciles with the consumed amount (amount is
+          //    negative for consumes; abs avoids the JS -0 vs +0 pitfall).
+          expect(Math.abs(agg._sum.amount ?? 0)).toBe(consumedTotal);
         },
       ),
       { numRuns: NUM_RUNS },
