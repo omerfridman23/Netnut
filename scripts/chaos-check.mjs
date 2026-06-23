@@ -117,15 +117,14 @@ async function main() {
   console.log(`Math consistent            : ${final === expected}`);
   console.log('-----------------------------------------');
 
-  // Restore the killed replica so the stack returns to full strength.
-  // `compose start` restarts the stopped container WITHOUT re-running the
-  // one-shot `migrate` dependency (which `compose up` would re-trigger).
+  // Restore the exact killed container so the stack returns to full strength.
+  // Starting by container id avoids re-running the one-shot `migrate` service.
   console.log('Restarting the killed replica...');
   try {
-    docker('compose start backend');
+    docker(`start ${victim}`);
   } catch (err) {
     console.warn('Could not auto-restart replica:', err.message);
-    console.warn('Restart manually with: docker compose start backend');
+    console.warn(`Restart manually with: docker start ${victim}`);
   }
 
   if (final < 0 || final !== expected) {
