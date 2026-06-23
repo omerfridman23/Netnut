@@ -129,7 +129,7 @@ Each significant choice is recorded as an Architecture Decision Record in [`docs
 | [0002](docs/decisions/0002-ledger-events-and-materialized-balance.md) | Ledger events + materialized balance | Append-only events plus an O(1) `walletBalance` column, written in the same transaction |
 | [0003](docs/decisions/0003-sqlite-wal-multi-instance.md) | SQLite (WAL) across replicas | WAL + `busy_timeout` + `connection_limit=1` + retry make one shared file safe for two instances |
 | [0004](docs/decisions/0004-idempotency-keys.md) | Client idempotency keys | Stripe-style `Idempotency-Key` + UNIQUE constraint, so retries charge at most once |
-| [0005](docs/decisions/0005-money-as-integer-cents.md) | Money as integer cents | All money stored and computed as integer cents |
+| [0005](docs/decisions/0005-money-as-integer-cents.md) | Money as integer cents | All money stored as whole numbers to guarantee exact arithmetic |
 | [0006](docs/decisions/0006-frontend-data-freshness.md) | Frontend freshness | React Query invalidate-on-mutation + 10s background polling keeps the dashboard fresh |
 | [0007](docs/decisions/0007-full-jitter-retry-backoff.md) | Full-jitter retry backoff | AWS-style full-jitter exponential backoff scatters competing writers off the lock |
 | [0008](docs/decisions/0008-proving-correctness-under-concurrency.md) | Proving correctness | Counter-example demo, property-based fuzz, chaos fault-injection, and runtime metrics |
