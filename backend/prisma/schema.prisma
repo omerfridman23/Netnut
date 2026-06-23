@@ -1,0 +1,82 @@
+// Prisma schema for the usage-based billing system.
+//
+// Money is stored everywhere as integer CENTS (never floats) to avoid
+// floating-point rounding errors in financial calculations.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Product {
+  id        String   @id @default(cuid())
+  name      String
+  // Price per unit, in cents.
+  unitPrice Int
+  createdAt DateTime @default(now())
+
+  events ConsumptionEvent[]
+}
+
+model Customer {
+  id            String   @id @default(cuid())
+  name          String
+  // Wallet balance in cents. Guarded by an atomic conditional UPDATE so it can
+  // never go negative, even under concurrent consumption from multiple instances.
+  walletBalance Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  events  ConsumptionEvent[]
+  credits CreditEvent[]
+}
+
+model ConsumptionEvent {
+  id         String   @id @default(cuid())
+  customerId String
+  productId  String
+  quantity   Int
+  // Snapshot of the product's unit price AT THE TIME of consumption, so historical
+  // records stay accurate even if the product's price changes later.
+  unitPrice  Int
+  // quantity * unitPrice, in cents. Stored to avoid recomputation and to lock in history.
+  totalCost  Int
+  // Optional client-supplied idempotency key (Stripe-style "Idempotency-Key" header).
+  // UNIQUE so a retried request can never create a second charge: the duplicate insert
+  // is rejected by the database and the original event is replayed instead.
+  // Nullable because keys are optional, and SQLite treats every NULL as distinct, so
+  // unkeyed requests never collide with each other.
+  idempotencyKey String? @unique
+  createdAt  DateTime @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  // Composite index powering keyset pagination of a customer's history, newest first.
+  @@index([customerId, createdAt, id])
+  @@index([productId])
+}
+
+model CreditEvent {
+  id         String   @id @default(cuid())
+  customerId String
+  // Credited amount, in cents. Doubles as a credit ledger row alongside the
+  // wallet's materialized balance (mirrors ConsumptionEvent for the debit side).
+  amount     Int
+  // Optional client-supplied idempotency key (Stripe-style "Idempotency-Key").
+  // UNIQUE so a retried credit can never top up twice: the duplicate insert is
+  // rejected by the database and the original credit is replayed instead.
+  // Nullable because keys are optional, and SQLite treats every NULL as distinct,
+  // so unkeyed credits never collide with one another.
+  idempotencyKey String? @unique
+  createdAt  DateTime @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  // Composite index powering keyset pagination of a customer's credits, newest first.
+  @@index([customerId, createdAt, id])
+}
