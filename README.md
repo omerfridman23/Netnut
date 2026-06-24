@@ -44,7 +44,7 @@ and real output in the **[Testing & proofs guide](docs/guides/testing.md)**.
 
 | Proof | What it proves | Run it |
 | --- | --- | --- |
-| **Counter-example demo** | The naive read-modify-write *loses money* (99 of 100 charges); the atomic UPDATE is exact | `npm --prefix backend run test:race-demo` |
+| **Counter-example demo** | The naive read-modify-write *loses updates* (under-charges the customer); the atomic UPDATE is exact | `npm --prefix backend run test:race-demo` |
 | **Property-based fuzz** | The invariant holds for **hundreds of random concurrent workloads locally (300) and a thousand in CI** — each a fresh wallet fired concurrently | `npm --prefix backend run test:property` |
 | **Concurrency suite** | No overspend, never negative, `balance == history`, no lost events | `npm --prefix backend run test:concurrency` |
 | **Idempotency suite** | A retry storm charges **exactly once** | `npm --prefix backend run test:idempotency` |
@@ -52,7 +52,7 @@ and real output in the **[Testing & proofs guide](docs/guides/testing.md)**.
 | **Runtime metrics** | The machinery is observable — inspect per-replica charges, replays, safe declines, and retry counters | `GET /api/metrics` |
 
 ```bash
-# 38 automated tests (unit + integration + e2e + property):
+# 35 automated tests (unit + integration + e2e + property):
 cd backend && npm test
 
 # live proofs against the running two-replica stack:
@@ -122,6 +122,7 @@ Each significant choice is recorded as an Architecture Decision Record in [`docs
 | [0002](docs/decisions/0002-ledger-events-and-materialized-balance.md) | Ledger events + materialized balance | Append-only events plus an O(1) `walletBalance` column, written in the same transaction |
 | [0003](docs/decisions/0003-sqlite-wal-multi-instance.md) | SQLite (WAL) across replicas | WAL + `busy_timeout` + `connection_limit=1` + retry make one shared file safe for two instances |
 | [0004](docs/decisions/0004-idempotency-keys.md) | Client idempotency keys | Stripe-style `Idempotency-Key` + UNIQUE constraint, so retries charge at most once |
+| [0005](docs/decisions/0005-unified-wallet-ledger.md) | Unified wallet ledger | One `WalletTransaction` table for credits and consumes — extensible history, one query, shared idempotency |
 | [0006](docs/decisions/0006-frontend-data-freshness.md) | Frontend freshness | React Query invalidate-on-mutation + 10s background polling keeps the dashboard fresh |
 | [0007](docs/decisions/0007-full-jitter-retry-backoff.md) | Full-jitter retry backoff | AWS-style full-jitter exponential backoff scatters competing writers off the lock |
 | [0008](docs/decisions/0008-proving-correctness-under-concurrency.md) | Proving correctness | Counter-example demo, property-based fuzz, chaos fault-injection, and runtime metrics |

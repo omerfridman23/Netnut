@@ -41,7 +41,7 @@ Schema notes (the *why* behind these lives in the linked ADRs below):
 ## Related ADRs
 
 - [ADR-0002: Ledger events + materialized balance](../decisions/0002-ledger-events-and-materialized-balance.md)
-- [ADR-0005: Money stored as integer cents](../decisions/0005-money-as-integer-cents.md)
+- [ADR-0005: Unified wallet ledger](../decisions/0005-unified-wallet-ledger.md)
 
 ---
 

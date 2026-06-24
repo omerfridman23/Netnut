@@ -40,7 +40,7 @@ docs/
     0002-ledger-events-and-materialized-balance.md
     0003-sqlite-wal-multi-instance.md
     0004-idempotency-keys.md
-    0005-money-as-integer-cents.md
+    0005-unified-wallet-ledger.md
     0006-frontend-data-freshness.md
     0007-full-jitter-retry-backoff.md
     0008-proving-correctness-under-concurrency.md

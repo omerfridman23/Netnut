@@ -10,7 +10,7 @@ the *why* behind the code reviewable on its own.
 | 0002 | Ledger events + materialized balance                | Accepted |
 | 0003 | SQLite (WAL) with multiple backend instances        | Accepted |
 | 0004 | Client-supplied idempotency keys for consume        | Accepted |
-| 0005 | Money stored as integer cents                       | Accepted |
+| 0005 | Unified wallet ledger (`WalletTransaction`)       | Accepted |
 | 0006 | Frontend freshness via React Query (polling/invalidate) | Accepted |
 | 0007 | Full-jitter exponential backoff for write retries   | Accepted |
 | 0008 | Proving correctness under concurrency (demo/fuzz/chaos/metrics) | Accepted |
