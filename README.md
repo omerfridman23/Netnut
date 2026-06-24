@@ -85,19 +85,12 @@ server — driving the real UI exactly as a user would:
 
 ### Narrated demo video
 
-A complete walkthrough of the platform — also captured via the **Playwright MCP**
-server — is recorded with **voice narration** describing each feature on screen,
-covering the customer dashboard, customer detail + consumption history, add-funds
-validation and success, recording usage, the safe insufficient-funds decline, the
-light/dark theme, and the **Live Proof metrics panel** (two replicas, charges,
-replays, declines, and DB lock-retry counters):
+A complete walkthrough of the platform is included as a short narrated video.
+It covers the customer dashboard, customer detail + consumption history,
+add-funds flow, recording usage, insufficient-funds decline, light/dark theme,
+and the **Live Proof metrics panel**:
 
 - **[`demo/meter-demo.mp4`](demo/meter-demo.mp4)**
-
-The video is fully reproducible: `demo/walk.js` drives the Playwright screen
-capture, `demo/narration.json` holds the per-scene script, and
-`demo/build.mjs` synthesizes the voiceover and muxes it onto the recording
-(`npm --prefix demo install && node demo/build.mjs`).
 
 ---
 
