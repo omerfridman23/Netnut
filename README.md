@@ -132,7 +132,7 @@ The [ADR index](docs/decisions/README.md) lists the full set and states the syst
 
 ## Notable trade-offs
 
-- **Reliability over features.** No auth, queues, Redis, or GraphQL - they add complexity without serving the evaluation criteria. The effort went into correctness, clean architecture, and clear documentation instead.
+- **Reliability over features.** No auth, queues, or Redis - they add complexity without serving the evaluation criteria. The effort went into correctness, clean architecture, and clear documentation instead.
 - **SQLite for the assignment**, with the PostgreSQL/MySQL production path documented in [ADR-0003](docs/decisions/0003-sqlite-wal-multi-instance.md).
 - **Atomic conditional UPDATE over locking** for the wallet - simpler, portable to any SQL database, and avoids lock-ordering pitfalls.
 - **Idempotency keys have no TTL/expiry.** Both consume *and* credit accept a Stripe-style `Idempotency-Key` (stored under a UNIQUE constraint, so a retried request is charged/credited at most once). The stored keys are never garbage-collected, though - a production system would add a periodic cleanup job for old keys.
